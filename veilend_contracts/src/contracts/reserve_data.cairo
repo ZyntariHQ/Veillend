@@ -1,16 +1,18 @@
 #[starknet::contract]
 mod ReserveData {
-    use starknet::{ 
+use starknet::{ 
         ContractAddress,
-        ClassHash
+        ClassHash,
+        get_caller_address,
+        get_block_timestamp,
     };
     
     use starknet::storage::{
         Map,
         StorageMapReadAccess,
         StorageMapWriteAccess,
-        StoragePointerWriteAccess,
-        StoragePointerReadAccess
+        // StoragePointerWriteAccess,
+        // StoragePointerReadAccess
     };
 
     use crate::enums::enums::*;
@@ -104,37 +106,139 @@ mod ReserveData {
 
     #[abi(embed_v0)]
     pub impl ReserveDataImpl of IReserveData<ContractState> {
+
         fn set_reserve_config(
             ref self: ContractState,
             asset: ContractAddress,
-            config: ReserveConfiguration
+            optimal_utilization_rate: u256,
+            base_variable_borrow_rate: u256,
+            variable_rate_slope1: u256,
+            variable_rate_slope2: u256,
+            loan_to_value: u256,
+            liquidation_threshold: u256,
+            liquidation_bonus: u256,
+            reserve_factor: u256,
+            a_token_address: ContractAddress,
+            variable_debt_token_address: ContractAddress,
+            is_active: bool,
+            is_frozen: bool,
+            borrowing_enabled: bool
         ) {
+            let config: ReserveConfiguration = ReserveConfiguration {
+                optimal_utilization_rate,
+                base_variable_borrow_rate,
+                variable_rate_slope1,
+                variable_rate_slope2,
+                loan_to_value,
+                liquidation_threshold,
+                liquidation_bonus,
+                reserve_factor,
+                a_token_address,
+                variable_debt_token_address,
+                is_active,
+                is_frozen,
+                borrowing_enabled,
+            };
+            
             self.reserve_config.write(asset, config);
+            
+            let reserve_configuration_updated_event: ReserveConfigurationUpdated = ReserveConfigurationUpdated {
+                asset,
+                optimal_utilization_rate,
+                base_variable_borrow_rate,
+                variable_rate_slope1,
+                variable_rate_slope2,
+                loan_to_value,
+                liquidation_threshold,
+                liquidation_bonus,
+                reserve_factor,
+                a_token_address,
+                variable_debt_token_address,
+                is_active,
+                is_frozen,
+                borrowing_enabled,
+            };
+            
+            self.emit(reserve_configuration_updated_event);
         }
 
         fn get_reserve_config(self: @ContractState, asset: ContractAddress) -> ReserveConfigurationResponse {
-            self.reserve_config.read(asset)
+            let config: ReserveConfiguration = self.reserve_config.read(asset);
+            reserve_config_to_response(config)
         }
 
         fn set_reserve_state(
             ref self: ContractState,
             asset: ContractAddress,
-            state: ReserveState
+            total_liquidity: u256,
+            available_liquidity: u256,
+            total_variable_debt: u256,
+            liquidity_rate: u256,
+            variable_borrow_rate: u256,
+            liquidity_index: u256,
+            variable_borrow_index: u256,
         ) {
+
+            let current_time: u64 = get_block_timestamp();
+
+            let state: ReserveState = ReserveState {
+                total_liquidity,
+                available_liquidity,
+                total_variable_debt,
+                liquidity_rate,
+                variable_borrow_rate,
+                liquidity_index,
+                variable_borrow_index,
+                last_update_timestamp: current_time,
+            };
+            
             self.reserve_state.write(asset, state);
+            
+            let reserve_state_updated_event: ReserveStateUpdated = ReserveStateUpdated {
+                asset,
+                total_liquidity,
+                available_liquidity,
+                total_variable_debt,
+                liquidity_rate,
+                variable_borrow_rate,
+                liquidity_index,
+                variable_borrow_index,
+                last_update_timestamp: current_time
+            };
+
+            self.emit(reserve_state_updated_event);
         }
 
         fn get_reserve_state(self: @ContractState, asset: ContractAddress) -> ReserveStateResponse {
-            self.reserve_state.read(asset)
+            let state: ReserveState = self.reserve_state.read(asset);
+            reserve_state_to_response(state)
         }
-
+    
         fn set_user_reserve_data(
             ref self: ContractState,
             user: ContractAddress,
             asset: ContractAddress,
-            data: UserReserveData
+            scaled_a_token_balance: u256,
+            scaled_variable_debt: u256,
+            is_using_as_collateral: bool
         ) {
+            let data: UserReserveData = UserReserveData {
+                scaled_a_token_balance,
+                scaled_variable_debt,
+                is_using_as_collateral,
+            };
+            
             self.user_reserve_data.write((user, asset), data);
+
+            let user_reserve_data_updated_event: UserReserveDataUpdated = UserReserveDataUpdated {
+                user,
+                asset,
+                scaled_a_token_balance,
+                scaled_variable_debt,
+                is_using_as_collateral,
+            };
+            
+            self.emit(user_reserve_data_updated_event);
         }
 
         fn get_user_reserve_data(
@@ -142,7 +246,8 @@ mod ReserveData {
             user: ContractAddress,
             asset: ContractAddress
         ) -> UserReserveDataResponse {
-            self.user_reserve_data.read((user, asset))
+            let data: UserReserveData = self.user_reserve_data.read((user, asset));
+            user_reserve_data_to_response(data)
         }
     }
 
@@ -158,3 +263,4 @@ mod ReserveData {
         }
     }
 }
+  

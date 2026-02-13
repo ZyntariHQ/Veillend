@@ -60,7 +60,7 @@ pub trait IShieldedPool<TContractState> {
 
 
 #[starknet::interface]
-trait IReserveData<TContractState> {
+pub trait IReserveData<TContractState> {
     fn set_reserve_config(
         ref self: TContractState,
         asset: ContractAddress,
@@ -94,7 +94,6 @@ trait IReserveData<TContractState> {
         variable_borrow_rate: u256,
         liquidity_index: u256,
         variable_borrow_index: u256,
-        last_update_timestamp: u64
     );
     fn get_reserve_state(self: @TContractState, asset: ContractAddress) -> ReserveStateResponse;
 

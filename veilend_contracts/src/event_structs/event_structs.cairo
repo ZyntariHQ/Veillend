@@ -42,3 +42,52 @@ pub struct UserReserveDataUpdated {
     pub scaled_variable_debt: u256,
     pub is_using_as_collateral: bool,
 }
+
+
+
+#[derive(Drop, starknet::Event)]
+pub struct Deposit {
+    pub reserve: ContractAddress,
+    pub user: ContractAddress,
+    pub on_behalf_of: ContractAddress,
+    pub amount: u256,
+    pub referral_code: u16,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct Withdraw {
+    pub reserve: ContractAddress,
+    pub user: ContractAddress,
+    pub to: ContractAddress,
+    pub amount: u256,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct Borrow {
+    pub reserve: ContractAddress,
+    pub user: ContractAddress,
+    pub on_behalf_of: ContractAddress,
+    pub amount: u256,
+    pub interest_rate_mode: u8,
+    pub borrow_rate: u256,
+    pub referral_code: u16,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct Repay {
+    pub reserve: ContractAddress,
+    pub user: ContractAddress,
+    pub repayer: ContractAddress,
+    pub amount: u256,
+    pub use_a_tokens: bool,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct ReserveDataUpdated {
+    pub reserve: ContractAddress,
+    pub liquidity_rate: u256,
+    pub stable_borrow_rate: u256,
+    pub variable_borrow_rate: u256,
+    pub liquidity_index: u256,
+    pub variable_borrow_index: u256,
+}
