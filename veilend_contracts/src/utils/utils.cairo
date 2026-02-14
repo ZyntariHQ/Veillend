@@ -1,7 +1,7 @@
 use crate::structs::structs::*;
 
 // In your utils.cairo file
-fn u256_pow(base: u256, exponent: u256) -> u256 {
+pub fn u256_pow(base: u256, exponent: u256) -> u256 {
     if exponent == 0_u256 {
         return 1_u256;
     }

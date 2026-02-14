@@ -112,3 +112,10 @@ pub trait IReserveData<TContractState> {
         asset: ContractAddress
     ) -> UserReserveDataResponse;
 }
+
+#[starknet::interface]
+pub trait IvShareToken<TContractState> {
+    fn _mint(ref self: TContractState, recipient: ContractAddress, amount: u256);
+
+    fn _burn(ref self: TContractState, account: ContractAddress, amount: u256);
+}

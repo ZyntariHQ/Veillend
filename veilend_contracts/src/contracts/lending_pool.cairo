@@ -1,12 +1,32 @@
 #[starknet::contract]
 mod LendingPool {
-    use starknet::{
+    // use crate::utils::utils::u256_pow;
+use crate::structs::structs::UserReserveDataResponse;
+use starknet::{
         ContractAddress,
         ClassHash,
         get_caller_address,
         get_contract_address,
         get_block_timestamp
-    }
+    };
+
+    use starknet::storage::{
+        Map,
+        Vec,
+        VecTrait,
+        // MutableVecTrait,
+        // StorageMapReadAccess,
+        // StorageMapWriteAccess,
+        StoragePointerReadAccess,
+        StoragePointerWriteAccess,
+        // StoragePathEntry
+    };
+
+    // use core::box::BoxTrait;
+    use core::array::{
+        Array,
+        ArrayTrait
+    };
     use openzeppelin_access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
 
@@ -22,21 +42,23 @@ mod LendingPool {
         IERC20DispatcherTrait
     };
 
-
-
-    use super::interfaces::IERC20Dispatcher;
-    use crate::interfaces::interfaces::IPriceOracleDispatcher;
-    use crate::interfaces::interfaces::IReserveDataDispatcher;
-    use crate::interfaces::interfaces::IInterestTokenInternalDispatcher;
-
-    use starknet::storage::{
-        Map,
-        Vec,
-        StorageMapReadAccess,
-        StorageMapWriteAccess,
-        StoragePointerWriteAccess,
-        StoragePointerReadAccess
+    use crate::interfaces::interfaces::{
+        IvShareTokenDispatcher,
+        IvShareTokenDispatcherTrait
     };
+
+
+
+    // use super::interfaces::IERC20Dispatcher;
+    use crate::interfaces::interfaces::{
+        IPriceOracleDispatcher,
+        IPriceOracleDispatcherTrait
+    };
+    use crate::interfaces::interfaces::{
+        IReserveDataDispatcher,
+        IReserveDataDispatcherTrait
+    };
+    // use crate::interfaces::interfaces::IInterestTokenInternalDispatcher;
 
 
     use crate::enums::enums::*;
@@ -171,43 +193,56 @@ mod LendingPool {
             
             self.reentrancyguard.start();
 
+            let zero_address: ContractAddress = '0'.try_into().unwrap();
+
+
             // Validate parameters
             assert!(amount > 0_u256, "Amount must be greater than 0");
-            assert!(on_behalf_of != 0_u256, "Invalid on_behalf_of address");
+            assert!(on_behalf_of != zero_address, "Invalid on_behalf_of address");
 
             // Get reserve configuration
             let reserve_data_contract_dispatcher: IReserveDataDispatcher = IReserveDataDispatcher {
                 contract_address: self.reserve_data_contract_address.read()
             };
 
-            let reserve_config: ReserveConfigurationResponse = reserve_data_contract_dispatcher.get_reserve_config(&asset);
+            let reserve_config: ReserveConfigurationResponse = reserve_data_contract_dispatcher.get_reserve_config(asset);
 
             assert!(reserve_config.is_active, "Reserve not active");
 
             // Transfer tokens from user
-            let token_dispatcher: IERC20Dispatcher = IERC20Dispatcher { contract_address: &asset };
+            let token_dispatcher: IERC20Dispatcher = IERC20Dispatcher { contract_address: asset };
 
             let caller: ContractAddress = get_caller_address();
 
             let contract: ContractAddress = get_contract_address();
 
-            let balance: u256 = token_dispatcher.balance_of(&caller);
+            let balance: u256 = token_dispatcher.balance_of(caller);
 
             assert!(balance >= amount, "Caller doesn't have enough balance");
 
-            let allowance: u256 = token_dispatcher.allowance(&caller, contract);
+            let allowance: u256 = token_dispatcher.allowance(caller, contract);
 
             assert!(allowance >= amount, "Contract is not allowed to spend enough token");
 
-            let success: bool = token_dispatcher.transfer_from(&caller, contract, amount);
+            let success: bool = token_dispatcher.transfer_from(caller, contract, amount);
+
+            assert!(success, "Transfer failed!");
+
 
             // Update reserve state
-            self._update_reserve_state(&asset, &amount, 0_u256, true);
+            self._update_reserve_state(asset, amount, 0_u256, true);
 
             // Mint aTokens to user
-            let a_token: IERC20Dispatcher = IERC20Dispatcher { contract_address: self.v_share_token_contract_address.read() };
-            let reserve_state: ReserveStateResponse = reserve_data_contract_dispatcher.get_reserve_state(&asset);
-            a_token.transfer(on_behalf_of, amount);
+            // let a_token_dispatcher: IERC20Dispatcher = IERC20Dispatcher { contract_address: self.v_share_token_contract_address.read() };
+            let v_share_token_dispatcher: IvShareTokenDispatcher = IvShareTokenDispatcher {
+                contract_address: self.v_share_token_contract_address.read()
+            };
+            let _reserve_state: ReserveStateResponse = reserve_data_contract_dispatcher.get_reserve_state(asset);
+
+            v_share_token_dispatcher._mint(
+                caller,           // caller
+                amount,           // amount to mint
+            );
 
             // Emit event
             let deposit_event: Deposit = Deposit {
@@ -229,37 +264,47 @@ mod LendingPool {
         ) {
             self.pausable.assert_not_paused();
             
-            self.reentrancyguard.start()
+            self.reentrancyguard.start();
+
+            let zero_address: ContractAddress = '0'.try_into().unwrap();
+
 
             assert!(amount > 0_u256, "Amount must be greater than 0");
-            assert!(to != 0_u256, "Invalid to address");
+            assert!(to != zero_address, "Invalid to address");
 
-            let caller = get_caller_address();
+            let caller: ContractAddress = get_caller_address();
 
             let reserve_data_contract_dispatcher: IReserveDataDispatcher = IReserveDataDispatcher {
                 contract_address: self.reserve_data_contract_address.read()
             };
             
             // Get reserve configuration
-            let reserve_config: ReserveConfigurationResponse = reserve_data_contract_dispatcher.get_reserve_config(&asset);
+            let _reserve_config: ReserveConfigurationResponse = reserve_data_contract_dispatcher.get_reserve_config(asset);
             // Get reserve state
-            let reserve_state: ReserveStateResponse = reserve_data_contract_dispatcher.get_reserve_state(&asset);
+            let _reserve_state: ReserveStateResponse = reserve_data_contract_dispatcher.get_reserve_state(asset);
 
             
             // Check health factor after withdrawal
-            let user_data = self.get_user_account_data(&caller);
-            assert(user_data.health_factor > 1000000000000000000_u256, "Health factor too low");
+            // let user_data = self.get_user_account_data(caller);
+            // assert!(user_data.health_factor > 1000000000000000000_u256, "Health factor too low");
 
             // Burn aTokens
-            let a_token: IERC20Dispatcher = IERC20Dispatcher { contract_address: self.v_share_token_contract_address.read() };
-            a_token.transfer_from(&caller, get_contract_address(), &amount);
+
+            let v_share_token_dispatcher: IvShareTokenDispatcher = IvShareTokenDispatcher {
+                contract_address: self.v_share_token_contract_address.read()
+            };
+
+            v_share_token_dispatcher._burn(
+                caller,           // caller
+                amount,           // amount to burn
+            );
 
             // Update reserve state
-            self._update_reserve_state(&asset, 0_u256, &amount, false);
+            self._update_reserve_state(asset, 0_u256, amount, false);
 
             // Transfer tokens to user
-            let token: IERC20Dispatcher = IERC20Dispatcher { contract_address: &asset };
-            token.transfer(to, &amount);
+            let token: IERC20Dispatcher = IERC20Dispatcher { contract_address: asset };
+            token.transfer(to, amount);
 
             let withdraw_event: Withdraw = Withdraw {
                 reserve: asset,
@@ -278,9 +323,107 @@ mod LendingPool {
             interest_rate_mode: u8,
             on_behalf_of: ContractAddress
         ) {
-            // Implementation follows similar pattern...
-        }
+            self.pausable.assert_not_paused();
+            self.reentrancyguard.start();
 
+            let zero_address: ContractAddress = '0'.try_into().unwrap();
+        
+            // Validate parameters
+            assert!(amount > 0_u256, "Amount must be greater than 0");
+            assert!(on_behalf_of != zero_address, "Invalid on_behalf_of address");
+            assert!(interest_rate_mode == 2_u8, "Only variable rate supported"); // 1=stable, 2=variable
+        
+            let caller = get_caller_address();
+        
+            // Get dispatchers
+            let reserve_data_dispatcher: IReserveDataDispatcher = IReserveDataDispatcher {
+                contract_address: self.reserve_data_contract_address.read()
+            };
+            
+            let price_oracle_dispatcher: IPriceOracleDispatcher = IPriceOracleDispatcher {
+                contract_address: self.price_oracle_contract_address.read()
+            };
+        
+            // Get reserve configuration and state
+            let reserve_config: ReserveConfigurationResponse = reserve_data_dispatcher.get_reserve_config(asset);
+            let mut reserve_state: ReserveStateResponse = reserve_data_dispatcher.get_reserve_state(asset);
+            
+            // Validate reserve is active and borrowing enabled
+            assert!(reserve_config.is_active, "Reserve not active");
+            assert!(reserve_config.borrowing_enabled, "Borrowing not enabled");
+            assert!(!reserve_config.is_frozen, "Reserve is frozen");
+            
+            // Check available liquidity
+            assert!(reserve_state.available_liquidity >= amount, "Insufficient liquidity");
+        
+            // Get user data and check health factor
+            let (total_collateral, _total_debt, _avg_lt, _health_factor, _, _) = self.get_user_account_data(on_behalf_of);
+            
+            // Calculate max borrowable amount based on collateral
+            let asset_price = price_oracle_dispatcher.get_price(asset);
+            let collateral_in_asset = (total_collateral *  u256_pow(10_u256, 18_u256)) / asset_price;
+            let max_borrowable = (collateral_in_asset * reserve_config.loan_to_value) / 10000_u256;
+            
+            // Check if user has enough collateral
+            let user_debt_in_asset = reserve_data_dispatcher.get_user_reserve_data(on_behalf_of, asset).scaled_variable_debt;
+            let available_to_borrow = if max_borrowable > user_debt_in_asset {
+                max_borrowable - user_debt_in_asset
+            } else {
+                0_u256
+            };
+            
+            assert!(amount <= available_to_borrow, "Insufficient collateral");
+        
+            // Update indices before modifying state
+            self._update_reserve_state(asset, 0_u256, 0_u256, false);
+        
+            // Get fresh state after update
+            reserve_state = reserve_data_dispatcher.get_reserve_state(asset);
+        
+            // Update user's debt in ReserveData
+            let mut user_data: UserReserveDataResponse = reserve_data_dispatcher.get_user_reserve_data(on_behalf_of, asset);
+            let scaled_amount = amount * u256_pow(10_u256, 27_u256) / reserve_state.variable_borrow_index;
+            user_data.scaled_variable_debt += scaled_amount;
+            
+            reserve_data_dispatcher.set_user_reserve_data(
+                on_behalf_of,
+                asset,
+                user_data.scaled_a_token_balance,
+                user_data.scaled_variable_debt,
+                user_data.is_using_as_collateral
+            );
+        
+            // Update reserve state
+            reserve_data_dispatcher.set_reserve_state(
+                asset,
+                reserve_state.total_liquidity,
+                reserve_state.available_liquidity - amount,  // Decrease available liquidity
+                reserve_state.total_variable_debt + amount,   // Increase total debt
+                reserve_state.liquidity_rate,
+                reserve_state.variable_borrow_rate,
+                reserve_state.liquidity_index,
+                reserve_state.variable_borrow_index
+            );
+        
+            // Transfer borrowed tokens to user
+            let token_dispatcher: IERC20Dispatcher = IERC20Dispatcher { contract_address: asset };
+            token_dispatcher.transfer(on_behalf_of, amount);
+        
+            // Emit borrow event
+            let borrow_event: Borrow = Borrow {
+                reserve: asset,
+                user: caller,
+                on_behalf_of,
+                amount,
+                interest_rate_mode,
+                borrow_rate: reserve_state.variable_borrow_rate,
+                referral_code: 0,
+            };
+            self.emit(borrow_event);
+            
+            self.reentrancyguard.end();
+        }
+        
         fn repay(
             ref self: ContractState,
             asset: ContractAddress,
@@ -288,7 +431,109 @@ mod LendingPool {
             interest_rate_mode: u8,
             on_behalf_of: ContractAddress
         ) {
-            // Implementation...
+            self.pausable.assert_not_paused();
+            self.reentrancyguard.start();
+
+            let zero_address: ContractAddress = '0'.try_into().unwrap();
+
+        
+            // Validate parameters
+            assert!(amount > 0_u256, "Amount must be greater than 0");
+            assert!(on_behalf_of != zero_address , "Invalid on_behalf_of address");
+            assert!(interest_rate_mode == 2_u8, "Only variable rate supported");
+        
+            let caller: ContractAddress = get_caller_address();
+            let contract_address: ContractAddress = get_contract_address();
+        
+            // Get dispatchers
+            let reserve_data_dispatcher: IReserveDataDispatcher = IReserveDataDispatcher {
+                contract_address: self.reserve_data_contract_address.read()
+            };
+        
+            // Get reserve configuration and state
+            let reserve_config: ReserveConfigurationResponse = reserve_data_dispatcher.get_reserve_config(asset);
+            let mut reserve_state = reserve_data_dispatcher.get_reserve_state(asset);
+            
+            // Validate reserve is active
+            assert!(reserve_config.is_active, "Reserve not active");
+            
+            // Get user's current debt
+            let mut user_data: UserReserveDataResponse = reserve_data_dispatcher.get_user_reserve_data(on_behalf_of, asset);
+            
+            // Calculate actual debt amount with accrued interest
+            let current_debt = (user_data.scaled_variable_debt * reserve_state.variable_borrow_index) / u256_pow(10_u256, 27_u256);
+            assert!(current_debt > 0_u256, "No debt to repay");
+            
+            // Determine repayment amount (if amount == 0 or > debt, repay full debt)
+            let repay_amount = if amount == 0_u256 || amount > current_debt {
+                current_debt
+            } else {
+                amount
+            };
+        
+            // Transfer tokens from user
+            let token_dispatcher: IERC20Dispatcher = IERC20Dispatcher { contract_address: asset };
+            
+            // Check balance and allowance
+            let caller_balance = token_dispatcher.balance_of(caller);
+            assert!(caller_balance >= repay_amount, "Insufficient balance");
+            
+            let allowance = token_dispatcher.allowance(caller, contract_address);
+            assert!(allowance >= repay_amount, "Insufficient allowance");
+            
+            // Transfer tokens to pool
+            token_dispatcher.transfer_from(caller, contract_address, repay_amount);
+        
+            // Update indices
+            self._update_reserve_state(asset, 0_u256, 0_u256, false);
+            
+            // Get fresh state after update
+            reserve_state = reserve_data_dispatcher.get_reserve_state(asset);
+        
+            // Calculate scaled amount to reduce
+            let scaled_repay_amount: u256 = (repay_amount * u256_pow(10_u256, 27_u256)) / reserve_state.variable_borrow_index;
+            
+            // Update user's debt
+            if scaled_repay_amount >= user_data.scaled_variable_debt {
+                // Repaid in full
+                user_data.scaled_variable_debt = 0_u256;
+            } else {
+                // Partial repayment
+                user_data.scaled_variable_debt -= scaled_repay_amount;
+            }
+            
+            reserve_data_dispatcher.set_user_reserve_data(
+                on_behalf_of,
+                asset,
+                user_data.scaled_a_token_balance,
+                user_data.scaled_variable_debt,
+                user_data.is_using_as_collateral
+            );
+
+        
+            // Update reserve state
+            reserve_data_dispatcher.set_reserve_state(
+                asset,
+                reserve_state.total_liquidity,
+                reserve_state.available_liquidity + repay_amount,  // Increase available liquidity
+                reserve_state.total_variable_debt - repay_amount,   // Decrease total debt
+                reserve_state.liquidity_rate,
+                reserve_state.variable_borrow_rate,
+                reserve_state.liquidity_index,
+                reserve_state.variable_borrow_index,
+            );
+        
+            // Emit repay event
+            let repay_event: Repay = Repay {
+                reserve: asset,
+                user: on_behalf_of,
+                repayer: caller,
+                amount: repay_amount,
+                use_a_tokens: false,  // Not using aTokens for repayment
+            };
+            self.emit(repay_event);
+            
+            self.reentrancyguard.end();
         }
 
         fn get_user_account_data(
@@ -306,58 +551,42 @@ mod LendingPool {
             let mut count = 0_u256;
 
 
-            // let mut filtered_claims_array: Array<InsuranceClaim> = array![];
-
-            // let len: u64 = self.claims_vec.len();
-
-            // for i in 0..len {
-
-            //     let current_status_code: u8 = self.claims_vec.at(i).read().claim_status_code.into();
-
-
-            //     if current_status_code == convert_claim_status_to_code(ClaimStatus::Repudiated) {
-            //         continue;
-            //     } else if current_status_code == convert_claim_status_to_code(ClaimStatus::Settled) {
-            //         continue;
-            //     } else {
-            //         filtered_claims_array.append(self.claims_vec.at(i).read());
-            //     }
-            // }
-
-            // filtered_claims_array
-
-
             // Iterate through all reserves
-            let reserves = self.reserves_list.read();
-            let len: u64 = reserves.len();
-            let mut i = 0_usize;
+            let mut reserves: Array<ContractAddress> = array![]; 
 
-            loop {
-                if i >= len {
-                    break ();
-                }
+            let len: u64 = self.reserves_list.len();
 
-                let asset = *reserves.at(i);
-                let reserve_config: ReserverConfigurationResponse = reserve_data_contract_dispatcher.get_reserve_config(&asset);
-                let user_data: UserReserveDataResponse = reserve_data_contract_dispatcher.get_user_reserve_data(user, asset);
+            for i in 0..len {
+                let each: ContractAddress = self.reserves_list.at(i).read().into();
+                reserves.append(each);
+            };
+
+
+            for j in 0..len {
+
+                let asset: ContractAddress = self.reserves_list.at(j).read();
+                let reserve_config: ReserveConfigurationResponse = reserve_data_contract_dispatcher.get_reserve_config(asset);
+                let user_data: UserReserveDataResponse = reserve_data_contract_dispatcher.get_user_reserve_data(user, asset.into());
+
+                let price_oracle_dispatcher: IPriceOracleDispatcher = IPriceOracleDispatcher {
+                    contract_address: self.price_oracle_contract_address.read()
+                };
 
                 if user_data.scaled_a_token_balance > 0_u256 && user_data.is_using_as_collateral {
-                    let price = self.price_oracle.read().get_price(asset);
-                    let a_token = IERC20Dispatcher{ contract_address: reserve_config.a_token_address };
-                    let balance = a_token.balance_of(user);
+                    let price: u256 = price_oracle_dispatcher.get_price(asset);
+                    let a_token_dispatcher: IERC20Dispatcher = IERC20Dispatcher{ contract_address: reserve_config.a_token_address };
+                    let balance: u256 = a_token_dispatcher.balance_of(user);
                     
-                    total_collateral += balance * price / (10_u256 ** 18_u256);
+                    total_collateral += balance * price / (u256_pow(10_u256, 18_u256));
                     avg_liquidation_threshold += reserve_config.liquidation_threshold;
                     count += 1_u256;
                 }
 
                 if user_data.scaled_variable_debt > 0_u256 {
-                    let price = self.price_oracle.read().get_price(asset);
+                    let price: u256 = price_oracle_dispatcher.get_price(asset);
                     // Calculate debt value
-                    total_debt += user_data.scaled_variable_debt * price / (10_u256 ** 18_u256);
+                    total_debt += user_data.scaled_variable_debt * price / u256_pow(10_u256, 18_u256);
                 }
-
-                i += 1;
             }
 
             let avg_lt = if count > 0_u256 { avg_liquidation_threshold / count } else { 0_u256 };
@@ -380,7 +609,7 @@ mod LendingPool {
 
     #[generate_trait]
     impl InternalImpl of InternalTrait {
-        fn _assert_not_paused(ref self: ContractState) -> bool {
+        fn _assert_not_paused(ref self: ContractState) {
             self.pausable.assert_not_paused();
         }
 
@@ -396,7 +625,7 @@ mod LendingPool {
                 contract_address: self.reserve_data_contract_address.read()
             };
 
-            let current_time: u64 = get_block_timestamp();
+            let _current_time: u64 = get_block_timestamp();
 
             let mut reserve_state: ReserveStateResponse = reserve_data_contract_dispatcher.get_reserve_state(asset);
             
@@ -424,31 +653,28 @@ mod LendingPool {
             reserve_state.last_update_timestamp = get_block_timestamp();
 
             // Update indices
-            reserve_state.liquidity_index = self._calculate_liquidity_index(reserve_data_contract_dispatcher);
-            reserve_state.variable_borrow_index = self.calculate_variable_borrow_index(reserve_data_contract_dispatcher);
-
-            self.reserve_data.write().set_reserve_state(asset, reserve_state);
+            reserve_state.liquidity_index = self._calculate_liquidity_index(asset, reserve_data_contract_dispatcher);
+            reserve_state.variable_borrow_index = self._calculate_variable_borrow_index(asset, reserve_data_contract_dispatcher);
 
             reserve_data_contract_dispatcher.set_reserve_state(
-                asset: reserve_state.asset,
-                total_liquidity: reserve_state.total_liquidity,
-                available_liquidity: reserve_state.available_liquidity,
-                total_variable_debt: reserve_state.total_variable_debt,
-                liquidity_rate: reserve_state.liquidity_rate,
-                variable_borrow_rate: reserve_state.variable_borrow_rate,
-                liquidity_index: reserve_state.liquidity_index,
-                variable_borrow_index: reserve_state.variable_borrow_index,
-                last_update_timestamp: get_block_timestamp()
+                asset,
+                reserve_state.total_liquidity,
+                reserve_state.available_liquidity,
+                reserve_state.total_variable_debt,
+                reserve_state.liquidity_rate,
+                reserve_state.variable_borrow_rate,
+                reserve_state.liquidity_index,
+                reserve_state.variable_borrow_index,
             );
 
-            self.emit(Event::ReserveDataUpdated(ReserveDataUpdated {
+            self.emit(ReserveDataUpdated {
                 reserve: asset,
                 liquidity_rate: new_liquidity_rate,
                 stable_borrow_rate: 0_u256,
                 variable_borrow_rate: new_variable_rate,
                 liquidity_index: reserve_state.liquidity_index,
                 variable_borrow_index: reserve_state.variable_borrow_index,
-            }));
+            });
         }
 
         fn _calculate_variable_borrow_rate(self: @ContractState, reserve_data_contract_dispatcher: IReserveDataDispatcher, asset: ContractAddress, utilization: u256) -> u256 {
@@ -480,9 +706,9 @@ mod LendingPool {
             return (utilization * variable_rate * (10000_u256 - reserve_factor)) / (10000_u256 * 10000_u256);
         }
 
-        fn _calculate_liquidity_index(self: @ContractState, reserve_data_contract_dispatcher: IReserveDataDispatcher) -> u256 {
+        fn _calculate_liquidity_index(self: @ContractState, asset: ContractAddress, reserve_data_contract_dispatcher: IReserveDataDispatcher) -> u256 {
 
-            let state: ReserveStateResponse = reserve_data_contract_dispatcher.get_reserve_state();
+            let state: ReserveStateResponse = reserve_data_contract_dispatcher.get_reserve_state(asset);
 
             let time_diff: u256 = (get_block_timestamp() - state.last_update_timestamp).into();
             let rate_per_second = state.liquidity_rate / 31536000_u256; // Seconds per year
@@ -490,9 +716,9 @@ mod LendingPool {
             state.liquidity_index * (u256_pow(10_u256, 27_u256) + (rate_per_second * time_diff)) / (u256_pow(10_u256, 27_u256))
         }
 
-        fn _calculate_variable_borrow_index(self: @ContractState, reserve_data_contract_dispatcher: IReserveDataDispatcher) -> u256 {
+        fn _calculate_variable_borrow_index(self: @ContractState, asset: ContractAddress, reserve_data_contract_dispatcher: IReserveDataDispatcher) -> u256 {
 
-            let state: ReserveStateResponse = reserve_data_contract_dispatcher.get_reserve_state();
+            let state: ReserveStateResponse = reserve_data_contract_dispatcher.get_reserve_state(asset);
 
             let time_diff: u256 = (get_block_timestamp() - state.last_update_timestamp).into();
             let rate_per_second = state.variable_borrow_rate / 31536000_u256;

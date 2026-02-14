@@ -1,6 +1,6 @@
 #[starknet::contract]
 pub mod vSHARETOKEN {
-    use openzeppelin::access::ownable::OwnableComponent;
+use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::token::erc20::{ERC20Component, ERC20HooksEmptyImpl};
     use openzeppelin::upgrades::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
@@ -9,6 +9,8 @@ pub mod vSHARETOKEN {
         StoragePointerWriteAccess,
         StoragePointerReadAccess
     };
+
+    use crate::interfaces::interfaces::IvShareToken;
 
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
@@ -72,6 +74,18 @@ pub mod vSHARETOKEN {
         self.erc20.mint(owner, initial_supply);
     }
 
+    pub impl vSHARETOKENImpl of IvShareToken<ContractState> {
+
+        fn _mint(ref self: ContractState, recipient: ContractAddress, amount: u256) {
+            self.erc20.mint(recipient, amount);
+        }
+
+        fn _burn(ref self: ContractState, account: ContractAddress, amount: u256) {
+            self.erc20.burn(account, amount);
+        }
+
+    }
+
 
     #[abi(embed_v0)]
     impl UpgradeableImpl of IUpgradeable<ContractState> {
@@ -87,10 +101,12 @@ pub mod vSHARETOKEN {
     #[generate_trait]
     impl InternalImpl of InternalTrait {
         fn _set_decimals(ref self: ContractState, decimals: u8) {
+            self.ownable.assert_only_owner();
             self.decimals.write(decimals);
         }
 
         fn _read_decimals(self: @ContractState) -> u8 {
+            self.ownable.assert_only_owner();
             self.decimals.read()
         }
     }   

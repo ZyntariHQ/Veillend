@@ -2,6 +2,7 @@ pub mod contracts{
     pub mod VEILENDGOVTOKEN;
     pub mod vSHARETOKEN;
     pub mod reserve_data;
+    pub mod lending_pool;
 }
 
 pub mod enums {
