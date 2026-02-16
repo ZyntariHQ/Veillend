@@ -43,8 +43,8 @@ use starknet::{
     };
 
     use crate::interfaces::interfaces::{
-        IvShareTokenDispatcher,
-        IvShareTokenDispatcherTrait
+        IInterestTokenDispatcher,
+        IInterestTokenDispatcherTrait
     };
 
 
@@ -126,7 +126,7 @@ use starknet::{
         addresses_provider_address: ContractAddress,
         reserve_data_contract_address: ContractAddress,
         price_oracle_contract_address: ContractAddress,
-        v_share_token_contract_address: ContractAddress,
+        interest_token_address: ContractAddress,
         
         // Whitelist for assets
         reserves_list: Vec<ContractAddress>,
@@ -168,7 +168,7 @@ use starknet::{
         reserve_data_contract: ContractAddress,
         price_oracle_contract: ContractAddress,
         fee_collector: ContractAddress,
-        v_share_token_contract_address: ContractAddress
+        interest_token_address: ContractAddress
     ) {
         self.accesscontrol.initializer();
         self.accesscontrol._grant_role(AccessControlComponent::DEFAULT_ADMIN_ROLE, admin_address);
@@ -178,7 +178,7 @@ use starknet::{
         self.reserve_data_contract_address.write(reserve_data_contract);
         self.price_oracle_contract_address.write(price_oracle_contract);
         self.fee_collector_address.write(fee_collector);
-        self.v_share_token_contract_address.write(v_share_token_contract_address);
+        self.interest_token_address.write(interest_token_address);
     }
 
     #[abi(embed_v0)]
@@ -233,9 +233,9 @@ use starknet::{
             self._update_reserve_state(asset, amount, 0_u256, true);
 
             // Mint aTokens to user
-            // let a_token_dispatcher: IERC20Dispatcher = IERC20Dispatcher { contract_address: self.v_share_token_contract_address.read() };
-            let v_share_token_dispatcher: IvShareTokenDispatcher = IvShareTokenDispatcher {
-                contract_address: self.v_share_token_contract_address.read()
+            // let a_token_dispatcher: IERC20Dispatcher = IERC20Dispatcher { contract_address: self.interest_token_address.read() };
+            let v_share_token_dispatcher: IInterestTokenDispatcher = IInterestTokenDispatcher {
+                contract_address: self.interest_token_address.read()
             };
             let _reserve_state: ReserveStateResponse = reserve_data_contract_dispatcher.get_reserve_state(asset);
 
@@ -290,8 +290,8 @@ use starknet::{
 
             // Burn aTokens
 
-            let v_share_token_dispatcher: IvShareTokenDispatcher = IvShareTokenDispatcher {
-                contract_address: self.v_share_token_contract_address.read()
+            let v_share_token_dispatcher: IInterestTokenDispatcher = IInterestTokenDispatcher {
+                contract_address: self.interest_token_address.read()
             };
 
             v_share_token_dispatcher._burn(

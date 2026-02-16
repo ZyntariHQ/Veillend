@@ -113,9 +113,16 @@ pub trait IReserveData<TContractState> {
     ) -> UserReserveDataResponse;
 }
 
-#[starknet::interface]
-pub trait IvShareToken<TContractState> {
-    fn _mint(ref self: TContractState, recipient: ContractAddress, amount: u256);
 
-    fn _burn(ref self: TContractState, account: ContractAddress, amount: u256);
+
+#[starknet::interface]
+pub trait IInterestToken<TContractState> {
+    fn _mint(ref self: TContractState, on_behalf_of: ContractAddress, amount: u256);
+    fn _burn(ref self: TContractState, from: ContractAddress, amount: u256);
+    fn scaled_balance_of(self: @TContractState, user: ContractAddress) -> u256;
+    fn get_scaled_total_supply(self: @TContractState) -> u256;
+    fn get_liquidity_index(self: @TContractState) -> u256;
+    fn set_liquidity_index(ref self: TContractState, new_index: u256);
+    fn get_underlying_asset(self: @TContractState) -> ContractAddress;
+    fn get_lending_pool(self: @TContractState) -> ContractAddress;
 }

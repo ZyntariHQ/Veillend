@@ -91,3 +91,28 @@ pub struct ReserveDataUpdated {
     pub liquidity_index: u256,
     pub variable_borrow_index: u256,
 }
+
+
+#[derive(Drop, starknet::Event)]
+pub struct Mint {
+    pub caller: ContractAddress,
+    pub on_behalf_of: ContractAddress,
+    pub amount: u256,
+    pub index: u256,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct Burn {
+    pub caller: ContractAddress,
+    pub on_behalf_of: ContractAddress,
+    pub amount: u256,
+    pub index: u256,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct IndexUpdated {
+    pub old_index: u256,
+    pub new_index: u256,
+    pub timestamp: u64,
+}
+

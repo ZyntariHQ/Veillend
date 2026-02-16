@@ -1,6 +1,6 @@
 pub mod contracts{
     pub mod VEILENDGOVTOKEN;
-    pub mod vSHARETOKEN;
+    pub mod interest_token;
     pub mod reserve_data;
     pub mod lending_pool;
 }
