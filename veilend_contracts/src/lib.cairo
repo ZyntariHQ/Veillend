@@ -3,6 +3,7 @@ pub mod contracts{
     pub mod interest_token;
     pub mod reserve_data;
     pub mod lending_pool;
+    pub mod price_oracle;
 }
 
 pub mod enums {

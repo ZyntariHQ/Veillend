@@ -116,3 +116,25 @@ pub struct IndexUpdated {
     pub timestamp: u64,
 }
 
+
+
+#[derive(Drop, starknet::Event)]
+pub struct PriceUpdated {
+    pub asset: ContractAddress,
+    pub price: u256,
+    pub timestamp: u64,
+    pub updater: ContractAddress,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct PriceSourceSet {
+    pub asset: ContractAddress,
+    pub source: ContractAddress,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct StalenessThresholdUpdated {
+    pub old_threshold: u64,
+    pub new_threshold: u64,
+}
+

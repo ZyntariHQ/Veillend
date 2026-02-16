@@ -52,7 +52,7 @@ use starknet::{
     // use super::interfaces::IERC20Dispatcher;
     use crate::interfaces::interfaces::{
         IPriceOracleDispatcher,
-        IPriceOracleDispatcherTrait
+        IPriceOracleDispatcherTrait,
     };
     use crate::interfaces::interfaces::{
         IReserveDataDispatcher,

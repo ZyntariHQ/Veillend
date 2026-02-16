@@ -4,11 +4,11 @@ use crate::structs::structs::*;
 use crate::enums::enums::*;
 
 
-#[starknet::interface]
-pub trait IPriceOracle<TContractState> {
-    fn get_price(self: @TContractState, asset: ContractAddress) -> u256;
-    fn get_prices(self: @TContractState, assets: Array<ContractAddress>) -> Array<u256>;
-}
+// #[starknet::interface]
+// pub trait IPriceOracle<TContractState> {
+//     fn get_price(self: @TContractState, asset: ContractAddress) -> u256;
+//     fn get_prices(self: @TContractState, assets: Array<ContractAddress>) -> Array<u256>;
+// }
 
 
 #[starknet::interface]
@@ -125,4 +125,22 @@ pub trait IInterestToken<TContractState> {
     fn set_liquidity_index(ref self: TContractState, new_index: u256);
     fn get_underlying_asset(self: @TContractState) -> ContractAddress;
     fn get_lending_pool(self: @TContractState) -> ContractAddress;
+}
+
+
+#[starknet::interface]
+pub trait IPriceOracle<TContractState> {
+    fn get_price(self: @TContractState, asset: ContractAddress) -> u256;
+    fn get_price_safe(self: @TContractState, asset: ContractAddress) -> (u256, bool);
+    fn get_prices(self: @TContractState, assets: Array<ContractAddress>) -> Array<u256>;
+    fn set_price(ref self: TContractState, asset: ContractAddress, price: u256);
+    fn set_prices(ref self: TContractState, assets: Array<ContractAddress>, prices: Array<u256>);
+    fn get_price_source(self: @TContractState, asset: ContractAddress) -> ContractAddress;
+    fn set_price_source(ref self: TContractState, asset: ContractAddress, source: ContractAddress);
+    fn get_price_decimals(self: @TContractState) -> u8;
+    fn get_base_currency(self: @TContractState) -> felt252;
+    fn get_staleness_threshold(self: @TContractState) -> u64;
+    fn set_staleness_threshold(ref self: TContractState, new_threshold: u64);
+    fn get_last_update_timestamp(self: @TContractState, asset: ContractAddress) -> u64;
+    fn is_price_fresh(self: @TContractState, asset: ContractAddress) -> bool;
 }
