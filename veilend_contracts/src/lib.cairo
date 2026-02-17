@@ -4,6 +4,7 @@ pub mod contracts{
     pub mod reserve_data;
     pub mod lending_pool;
     pub mod price_oracle;
+    pub mod shielded_pool;
 }
 
 pub mod enums {

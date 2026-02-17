@@ -45,19 +45,6 @@ pub trait ILendingPool<TContractState> {
     ) -> (u256, u256, u256, u256, u256, u8);
 }
 
-#[starknet::interface]
-pub trait IShieldedPool<TContractState> {
-    fn deposit_shielded(ref self: TContractState, commitment: ByteArray, amount: u256);
-    fn withdraw_shielded(
-        ref self: TContractState,
-        proof: Array<felt252>,
-        nullifier: ByteArray,
-        recipient: ContractAddress,
-        amount: u256
-    );
-}
-
-
 
 #[starknet::interface]
 pub trait IReserveData<TContractState> {
@@ -144,3 +131,45 @@ pub trait IPriceOracle<TContractState> {
     fn get_last_update_timestamp(self: @TContractState, asset: ContractAddress) -> u64;
     fn is_price_fresh(self: @TContractState, asset: ContractAddress) -> bool;
 }
+
+
+
+// Interface definitions - add to interfaces.cairo
+#[starknet::interface]
+pub trait IShieldedPool<TContractState> {
+    fn deposit_shielded(
+        ref self: TContractState,
+        commitment: felt252,
+        asset: ContractAddress,
+        amount: u256,
+    );
+    fn withdraw_shielded(
+        ref self: TContractState,
+        nullifier: felt252,
+        recipient: ContractAddress,
+        asset: ContractAddress,
+        amount: u256,
+        merkle_proof: Array<felt252>,
+        path_indices: Array<u8>,
+    );
+    fn verify_proof(
+        self: @TContractState,
+        proof: Array<felt252>,
+        public_inputs: Array<felt252>,
+    ) -> bool;
+    fn get_commitment(self: @TContractState, commitment_hash: felt252) -> (u256, ContractAddress, bool);
+    fn is_nullifier_used(self: @TContractState, nullifier: felt252) -> bool;
+    fn get_merkle_root(self: @TContractState) -> felt252;
+    fn get_next_leaf_index(self: @TContractState) -> u64;
+    fn get_total_shielded(self: @TContractState, asset: ContractAddress) -> u256;
+
+    fn add_supported_asset(ref self: TContractState, asset: ContractAddress);
+    fn remove_supported_asset(ref self: TContractState, asset: ContractAddress);
+    fn set_deposit_limits(ref self: TContractState, min_amount: u256, max_amount: u256);
+    fn set_deposit_fee(ref self: TContractState, fee_basis_points: u16);
+    fn set_fee_collector(ref self: TContractState, new_collector: ContractAddress);
+    fn enable_emergency_withdrawal(ref self: TContractState, enabled: bool);
+    fn emergency_withdraw(ref self: TContractState, asset: ContractAddress, recipient: ContractAddress, amount: u256);
+
+}
+

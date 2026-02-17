@@ -111,3 +111,21 @@ pub struct UserReserveDataResponse {
     pub is_using_as_collateral: bool,
 }
 
+
+#[derive(Drop, Serde, Clone, starknet::Store)]
+pub struct Commitment {
+    pub amount: u256,
+    pub asset: ContractAddress,
+    pub depositor: ContractAddress,
+    pub leaf_index: u64,
+    pub timestamp: u64,
+    pub is_spent: bool,
+}
+
+#[derive(Drop, Serde, Clone)]
+pub struct MerkleProof {
+    pub leaf: felt252,
+    pub path_elements: Array<felt252>,
+    pub path_indices: Array<u8>,
+    pub root: felt252,
+}

@@ -138,3 +138,58 @@ pub struct StalenessThresholdUpdated {
     pub new_threshold: u64,
 }
 
+
+#[derive(Drop, starknet::Event)]
+pub struct ShieldedDeposit {
+    pub commitment: felt252,
+    pub asset: ContractAddress,
+    pub amount: u256,
+    pub depositor: ContractAddress,
+    pub leaf_index: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct ShieldedWithdrawal {
+    pub nullifier: felt252,
+    pub recipient: ContractAddress,
+    pub asset: ContractAddress,
+    pub amount: u256,
+    pub fee: u256,
+    pub timestamp: u64,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct MerkleRootUpdated {
+    pub old_root: felt252,
+    pub new_root: felt252,
+    pub leaf_index: u64,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct AssetAdded {
+    pub asset: ContractAddress,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct AssetRemoved {
+    pub asset: ContractAddress,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct EmergencyWithdrawal {
+    pub recipient: ContractAddress,
+    pub asset: ContractAddress,
+    pub amount: u256,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct Paused {
+    pub caller: ContractAddress,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct Unpaused {
+    pub caller: ContractAddress,
+}
+

@@ -1,5 +1,3 @@
-// src/privacy/shielded_pool.cairo
-
 #[starknet::contract]
 mod ShieldedPool {
     use starknet::{
@@ -11,24 +9,41 @@ mod ShieldedPool {
     };
     use starknet::storage::{
         Map, 
+        Vec,
+        // VecTrait,
+        MutableVecTrait,
         StorageMapReadAccess, 
         StorageMapWriteAccess,
-        Vec,
-        VecTrait
+        StoragePointerReadAccess,
+        StoragePointerWriteAccess
     };
-    use poseidon::PoseidonTrait;
-    use core::poseidon::PoseidonHash;
+    
+    use core::poseidon::PoseidonTrait;
+    use core::hash::HashStateTrait;
+    use core::poseidon::HashState;
+
     use openzeppelin_access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::upgrades::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
     use openzeppelin::security::reentrancyguard::ReentrancyGuardComponent;
+    use openzeppelin::security::pausable::PausableComponent;
+
     use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+
+    use core::num::traits::Zero;
+
+
+    use crate::event_structs::event_structs::*;
+    use crate::structs::structs::*;
+    use crate::interfaces::interfaces::IShieldedPool;
 
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
     component!(path: ReentrancyGuardComponent, storage: reentrancyguard, event: ReentrancyGuardEvent);
+    component!(path: PausableComponent, storage: pausable, event: PausableEvent);
+
 
     #[abi(embed_v0)]
     impl AccessControlImpl = AccessControlComponent::AccessControlImpl<ContractState>;
@@ -36,6 +51,10 @@ mod ShieldedPool {
 
     impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
     impl ReentrancyGuardInternalImpl = ReentrancyGuardComponent::InternalImpl<ContractState>;
+
+    #[abi(embed_v0)]
+    impl PausableImpl = PausableComponent::PausableImpl<ContractState>;
+    impl PausableInternalImpl = PausableComponent::InternalImpl<ContractState>;
 
     const GUARDIAN_ROLE: felt252 = selector!("GUARDIAN_ROLE");
     const PAUSER_ROLE: felt252 = selector!("PAUSER_ROLE");
@@ -50,6 +69,8 @@ mod ShieldedPool {
         upgradeable: UpgradeableComponent::Storage,
         #[substorage(v0)]
         reentrancyguard: ReentrancyGuardComponent::Storage,
+        #[substorage(v0)]
+        pausable: PausableComponent::Storage,
 
         // Commitments: commitment_hash -> Commitment data
         commitments: Map<felt252, Commitment>,
@@ -75,27 +96,10 @@ mod ShieldedPool {
         fee_collector: ContractAddress,
         
         // Security
-        paused: bool,
         emergency_withdrawal_enabled: bool,
     }
 
-    #[derive(Drop, Serde, Copy)]
-    struct Commitment {
-        amount: u256,
-        asset: ContractAddress,
-        depositor: ContractAddress,
-        leaf_index: u64,
-        timestamp: u64,
-        is_spent: bool,
-    }
 
-    #[derive(Drop, Serde, Copy)]
-    struct MerkleProof {
-        leaf: felt252,
-        path_elements: Array<felt252>,
-        path_indices: Array<u8>,
-        root: felt252,
-    }
 
     #[event]
     #[derive(Drop, starknet::Event)]
@@ -108,6 +112,8 @@ mod ShieldedPool {
         UpgradeableEvent: UpgradeableComponent::Event,
         #[flat]
         ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
+        #[flat]
+        PausableEvent: PausableComponent::Event,
         
         ShieldedDeposit: ShieldedDeposit,
         ShieldedWithdrawal: ShieldedWithdrawal,
@@ -115,64 +121,9 @@ mod ShieldedPool {
         AssetAdded: AssetAdded,
         AssetRemoved: AssetRemoved,
         EmergencyWithdrawal: EmergencyWithdrawal,
-        Paused: Paused,
-        Unpaused: Unpaused,
     }
 
-    #[derive(Drop, starknet::Event)]
-    struct ShieldedDeposit {
-        commitment: felt252,
-        asset: ContractAddress,
-        amount: u256,
-        depositor: ContractAddress,
-        leaf_index: u64,
-        timestamp: u64,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct ShieldedWithdrawal {
-        nullifier: felt252,
-        recipient: ContractAddress,
-        asset: ContractAddress,
-        amount: u256,
-        fee: u256,
-        timestamp: u64,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct MerkleRootUpdated {
-        old_root: felt252,
-        new_root: felt252,
-        leaf_index: u64,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct AssetAdded {
-        asset: ContractAddress,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct AssetRemoved {
-        asset: ContractAddress,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct EmergencyWithdrawal {
-        recipient: ContractAddress,
-        asset: ContractAddress,
-        amount: u256,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct Paused {
-        caller: ContractAddress,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct Unpaused {
-        caller: ContractAddress,
-    }
-
+   
     #[constructor]
     fn constructor(
         ref self: ContractState,
@@ -188,9 +139,7 @@ mod ShieldedPool {
         self.accesscontrol._grant_role(AccessControlComponent::DEFAULT_ADMIN_ROLE, admin_address);
         self.accesscontrol._grant_role(GUARDIAN_ROLE, guardian_address);
         self.accesscontrol._grant_role(PAUSER_ROLE, guardian_address);
-        
-        self.reentrancyguard.initializer();
-        
+                
         self.fee_collector.write(fee_collector);
         self.tree_depth.write(tree_depth);
         self.min_deposit_amount.write(min_deposit);
@@ -199,7 +148,6 @@ mod ShieldedPool {
         
         self.merkle_root.write(0_felt252);
         self.next_leaf_index.write(0_u64);
-        self.paused.write(false);
         self.emergency_withdrawal_enabled.write(false);
     }
 
@@ -211,7 +159,8 @@ mod ShieldedPool {
             asset: ContractAddress,
             amount: u256,
         ) {
-            self._require_not_paused();
+            
+            self.pausable.assert_not_paused();
             self.reentrancyguard.start();
 
             // Validate inputs
@@ -228,7 +177,7 @@ mod ShieldedPool {
             let contract_address = get_contract_address();
 
             // Transfer tokens from user
-            let token_dispatcher = IERC20Dispatcher { contract_address: asset };
+            let token_dispatcher: IERC20Dispatcher = IERC20Dispatcher { contract_address: asset };
             
             let balance = token_dispatcher.balance_of(caller);
             assert!(balance >= amount, "Insufficient balance");
@@ -279,7 +228,8 @@ mod ShieldedPool {
             merkle_proof: Array<felt252>,
             path_indices: Array<u8>,
         ) {
-            self._require_not_paused();
+
+            self.pausable.assert_not_paused();
             self.reentrancyguard.start();
 
             // Validate inputs
@@ -338,14 +288,14 @@ mod ShieldedPool {
             // Send remaining amount to recipient
             token_dispatcher.transfer(recipient, amount_after_fee);
 
-            self.emit(Event::ShieldedWithdrawal(ShieldedWithdrawal {
+            self.emit(ShieldedWithdrawal {
                 nullifier,
                 recipient,
                 asset,
                 amount: amount_after_fee,
                 fee,
                 timestamp: get_block_timestamp(),
-            }));
+            });
 
             self.reentrancyguard.end();
         }
@@ -381,19 +331,16 @@ mod ShieldedPool {
         fn get_total_shielded(self: @ContractState, asset: ContractAddress) -> u256 {
             self.total_shielded_per_asset.read(asset)
         }
-    }
 
-    #[abi(embed_v0)]
-    impl AdminFunctionsImpl of IAdminFunctions<ContractState> {
         fn add_supported_asset(ref self: ContractState, asset: ContractAddress) {
             self._check_guardian();
             
             assert!(!self.asset_supported.read(asset), "Asset already supported");
             
             self.asset_supported.write(asset, true);
-            self.supported_assets.append(asset);
+            self.supported_assets.push(asset);
             
-            self.emit(Event::AssetAdded(AssetAdded { asset }));
+            self.emit(AssetAdded { asset });
         }
 
         fn remove_supported_asset(ref self: ContractState, asset: ContractAddress) {
@@ -406,7 +353,7 @@ mod ShieldedPool {
             // Note: In production, you'd also remove from the vector
             // This requires more complex vector manipulation
             
-            self.emit(Event::AssetRemoved(AssetRemoved { asset }));
+            self.emit(AssetRemoved { asset });
         }
 
         fn set_deposit_limits(
@@ -438,20 +385,6 @@ mod ShieldedPool {
             self.fee_collector.write(new_collector);
         }
 
-        fn pause(ref self: ContractState) {
-            self._check_pauser();
-            
-            self.paused.write(true);
-            self.emit(Event::Paused(Paused { caller: get_caller_address() }));
-        }
-
-        fn unpause(ref self: ContractState) {
-            self._check_pauser();
-            
-            self.paused.write(false);
-            self.emit(Event::Unpaused(Unpaused { caller: get_caller_address() }));
-        }
-
         fn enable_emergency_withdrawal(ref self: ContractState, enabled: bool) {
             self._check_guardian();
             
@@ -475,19 +408,17 @@ mod ShieldedPool {
             
             token_dispatcher.transfer(recipient, amount);
             
-            self.emit(Event::EmergencyWithdrawal(EmergencyWithdrawal {
+            self.emit(EmergencyWithdrawal {
                 recipient,
                 asset,
                 amount,
-            }));
+            });
         }
     }
 
     #[generate_trait]
-    impl InternalFunctions of InternalFunctionsTrait {
-        fn _require_not_paused(ref self: ContractState) {
-            assert!(!self.paused.read(), "Contract is paused");
-        }
+    impl InternalImpl of InternalTrait {
+      
 
         fn _check_guardian(ref self: ContractState) {
             let caller = get_caller_address();
@@ -517,18 +448,23 @@ mod ShieldedPool {
             
             // Calculate new root (simplified - in production use incremental merkle tree)
             // This is a placeholder for actual merkle tree implementation
-            let poseidon = PoseidonTrait::new();
-            let inputs = array![current_root, leaf, next_index.into()];
-            let new_root = poseidon.hash(inputs);
+            let _poseidon: HashState = PoseidonTrait::new();
+            let _inputs: Array<felt252> = array![current_root, leaf, next_index.into()];
+            // let new_root = poseidon.hash(inputs);
+            let new_root = PoseidonTrait::new()
+                            .update(current_root)
+                            .update(leaf)
+                            .update(next_index.into())
+                            .finalize();
             
             self.merkle_root.write(new_root);
             self.next_leaf_index.write(next_index + 1);
             
-            self.emit(Event::MerkleRootUpdated(MerkleRootUpdated {
+            self.emit(MerkleRootUpdated {
                 old_root: current_root,
                 new_root,
                 leaf_index: next_index,
-            }));
+            });
         }
 
         fn _verify_merkle_proof(
@@ -549,39 +485,39 @@ mod ShieldedPool {
             assert!(proof_len == indices_len, "Invalid proof length");
             assert!(proof_len == self.tree_depth.read(), "Invalid proof depth");
             
-            let poseidon = PoseidonTrait::new();
+            let _poseidon: HashState = PoseidonTrait::new();
             
-            let mut i = 0_usize;
-            loop {
-                if i >= proof_len {
-                    break;
-                }
-                
-                let sibling = *proof.at(i);
-                let direction = *path_indices.at(i);
-                
-                if direction == 0_u8 {
-                    // Leaf is left sibling
-                    let inputs = array![computed_hash, sibling];
-                    computed_hash = poseidon.hash(inputs);
-                } else {
-                    // Leaf is right sibling
-                    let inputs = array![sibling, computed_hash];
-                    computed_hash = poseidon.hash(inputs);
-                }
-                
-                i += 1;
-            };
+    
+                for i in 0..proof_len {
+                    let sibling = *proof.at(i);
+                    let direction = *path_indices.at(i);
+                    
+                    // Create a new Poseidon instance for each hash
+                    if direction == 0_u8 {
+                        // Leaf is left sibling
+                        computed_hash = PoseidonTrait::new()
+                            .update(computed_hash)
+                            .update(sibling)
+                            .finalize();
+                    } else {
+                        // Leaf is right sibling
+                        computed_hash = PoseidonTrait::new()
+                            .update(sibling)
+                            .update(computed_hash)
+                            .finalize();
+                    }
+                };
             
             computed_hash == expected_root
         }
 
+
         fn _nullifier_to_commitment(self: @ContractState, nullifier: felt252) -> felt252 {
             // In production, this would be derived from ZK proof
             // For demo, use Poseidon hash
-            let poseidon = PoseidonTrait::new();
-            let inputs = array![nullifier];
-            poseidon.hash(inputs)
+            PoseidonTrait::new()
+                .update(nullifier)
+                .finalize()
         }
 
         fn _calculate_fee(self: @ContractState, amount: u256) -> u256 {
@@ -600,47 +536,4 @@ mod ShieldedPool {
             self.upgradeable.upgrade(new_class_hash);
         }
     }
-}
-
-// Interface definitions - add to interfaces.cairo
-#[starknet::interface]
-trait IShieldedPool<TContractState> {
-    fn deposit_shielded(
-        ref self: TContractState,
-        commitment: felt252,
-        asset: ContractAddress,
-        amount: u256,
-    );
-    fn withdraw_shielded(
-        ref self: TContractState,
-        nullifier: felt252,
-        recipient: ContractAddress,
-        asset: ContractAddress,
-        amount: u256,
-        merkle_proof: Array<felt252>,
-        path_indices: Array<u8>,
-    );
-    fn verify_proof(
-        self: @TContractState,
-        proof: Array<felt252>,
-        public_inputs: Array<felt252>,
-    ) -> bool;
-    fn get_commitment(self: @TContractState, commitment_hash: felt252) -> (u256, ContractAddress, bool);
-    fn is_nullifier_used(self: @TContractState, nullifier: felt252) -> bool;
-    fn get_merkle_root(self: @TContractState) -> felt252;
-    fn get_next_leaf_index(self: @TContractState) -> u64;
-    fn get_total_shielded(self: @TContractState, asset: ContractAddress) -> u256;
-}
-
-#[starknet::interface]
-trait IAdminFunctions<TContractState> {
-    fn add_supported_asset(ref self: TContractState, asset: ContractAddress);
-    fn remove_supported_asset(ref self: TContractState, asset: ContractAddress);
-    fn set_deposit_limits(ref self: TContractState, min_amount: u256, max_amount: u256);
-    fn set_deposit_fee(ref self: TContractState, fee_basis_points: u16);
-    fn set_fee_collector(ref self: TContractState, new_collector: ContractAddress);
-    fn pause(ref self: TContractState);
-    fn unpause(ref self: TContractState);
-    fn enable_emergency_withdrawal(ref self: TContractState, enabled: bool);
-    fn emergency_withdraw(ref self: TContractState, asset: ContractAddress, recipient: ContractAddress, amount: u256);
 }
